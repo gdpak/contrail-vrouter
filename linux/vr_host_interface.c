@@ -560,15 +560,24 @@ linux_get_rxq(struct sk_buff *skb, u16 *rxq, unsigned int curr_cpu,
      * Clear the bits corresponding to the current core and its hyperthreads
      * in the node CPU mask.
      */
-    cpumask_andnot(&noht_cpumask, node_cpumask, cpu_sibling_mask(curr_cpu));
-
+#if (LINUX_VERSION_CODE <= KERNEL_VERSION(4,2,0))
+        cpumask_andnot(&noht_cpumask, node_cpumask, cpu_sibling_mask(curr_cpu));
+#else
+        cpumask_andnot(&noht_cpumask, node_cpumask,
+                                       topology_sibling_cpumask(curr_cpu));
+#endif
     /*
      * If the previous CPU is specified, clear the bits corresponding to
      * that core and its hyperthreads in the CPU mask.
      */
     if (prev_cpu && (prev_cpu <= nr_cpu_ids)) {
         cpumask_andnot(&noht_cpumask, &noht_cpumask,
-                       cpu_sibling_mask(prev_cpu-1));
+#if (LINUX_VERSION_CODE <= KERNEL_VERSION(4,2,0))
+                    cpumask_andnot(&noht_cpumask, node_cpumask, cpu_sibling_mask(curr_cpu));
+#else
+                    cpumask_andnot(&noht_cpumask, node_cpumask,
+                                               topology_sibling_cpumask(curr_cpu));
+#endif
     }
 
     num_cpus = cpumask_weight(&noht_cpumask);
@@ -1823,7 +1832,12 @@ linux_pkt_dev_init(char *name, void (*setup)(struct net_device *),
     int err = 0;
     struct net_device *pdev = NULL;
 
-    if (!(pdev = alloc_netdev_mqs(0, name, setup,
+    if (!(pdev = alloc_netdev_mqs(0, name, 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,17,0))
+#else
+                                  NET_NAME_UNKNOWN,
+#endif
+                                  setup,
                                   1, num_present_cpus()))) {
         vr_module_error(-ENOMEM, __FUNCTION__, __LINE__, 0);
         return NULL;
